@@ -1,166 +1,167 @@
-import React, { useState } from "react";
-import { Heart, User, Stethoscope, Pill, ChevronDown } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Heart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import "./Login.css";
 import { supabase } from "../supabaseClient";
+import "./Login.css";
 
 export default function Login() {
-  const [username, setUsername] = useState("");
-  const [userType, setUserType] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async () => {
-    if (!username || !userType) {
-      alert("Please enter both username and select your role.");
+  const [role, setRole] = useState("patient");
+  const [formData, setFormData] = useState({ username: "", uid: "" });
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const last = localStorage.getItem("lastSignedUpRole");
+    if (last) setRole(last);
+  }, []);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((p) => ({ ...p, [name]: value }));
+    setError("");
+  };
+
+  const handleAbout = () => {
+    window.alert(
+      "Mediconnect connects Patients, Doctors, and Chemists.\nPatients view their records via UID. Doctors can view/add for any patient by UID. Chemists can view prescriptions."
+    );
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!formData.username.trim()) {
+      setError("Username is required");
       return;
     }
 
     try {
-      const { data: patient, error } = await supabase
-        .from("patients")
-        .select("*")
-        .ilike("username", username.trim())
-        .single();
+      let table = role === "patient" ? "patients" : role === "doctor" ? "doctors" : "chemists";
+      let q = supabase.from(table).select("*").eq("username", formData.username);
 
-      if (error || !patient) {
-        alert("No such patient found. Please check username or sign up first.");
+      if (role === "patient") {
+        if (!formData.uid.trim()) {
+          setError("Patient UID is required");
+          return;
+        }
+        q = q.eq("uid", formData.uid);
+      }
+
+      const { data, error } = await q.single();
+      if (error || !data) {
+        setError("Invalid credentials or role mismatch.");
         return;
       }
 
-      navigate("/dashboard", {
-        state: { username, userType },
-      });
+      navigate("/dashboard", { state: { userType: role, userData: data } });
     } catch (err) {
-      alert("Error during login: " + err.message);
+      setError("Error: " + err.message);
     }
   };
 
-  const handleSignupClick = () => navigate("/signup");
-
-  const userTypes = [
-    { value: "patient", label: "Patient", icon: User },
-    { value: "doctor", label: "Doctor", icon: Stethoscope },
-    { value: "chemist", label: "Chemist", icon: Pill },
-  ];
-
   return (
     <div className="home-container">
+      {/* Header */}
       <header className="header">
         <div className="header-inner">
           <div className="logo-section">
             <Heart className="logo-icon" fill="currentColor" />
             <h1 className="logo-text">Mediconnect</h1>
           </div>
-          <button className="signup-btn" onClick={handleSignupClick}>
-            Sign Up
-          </button>
+          <div className="header-actions">
+            <button className="signup-btn" onClick={() => navigate("/signup")}>Sign Up</button>
+          </div>
         </div>
       </header>
 
+      {/* Hero / Description */}
+      <section className="hero">
+        <h2>Your simple, secure EHR.</h2>
+        <p>
+        “<strong>Have you ever repeated a test just because previous reports weren’t available?</strong>
+         Here’s the fix — a<strong> digital EHR platform </strong> that stores every patient record in one place, making healthcare <strong>faster, smarter, and more connected.</strong>”
+        </p>
+        <p><br></br></p>
+        <p>
+          “<strong>No more lost reports. No more repeated tests</strong>. Just one secure EHR for every patient because <strong>every detail matters in your care.</strong>”
+
+        </p>
+
+      </section>
+
+      {/* Login Card */}
       <main className="main-content">
-        {/* --- Intro Section --- */}
-        <section className="intro-section">
-          <p className="intro-text">
-            Welcome to <strong>Mediconnect</strong> — a unified digital healthcare platform
-            connecting <strong>patients</strong>, <strong>doctors</strong>, and <strong>chemists</strong>.
-            Manage medical records, consultations, and prescriptions securely — all in one place.
-          </p>
-        </section>
-
-        {/* --- Login Box --- */}
-        <div className="login-box">
-          <h3 className="login-title">Login to Your Account</h3>
-
-          <div className="input-group">
-            <label>Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
-            />
+        <div className="login-card">
+          <div className="role-tabs">
+            <button className={role === "patient" ? "active" : ""} onClick={() => { setRole("patient"); setFormData({ username: "", uid: "" }); setError(""); }}>
+              Patient
+            </button>
+            <button className={role === "doctor" ? "active" : ""} onClick={() => { setRole("doctor"); setFormData({ username: "", uid: "" }); setError(""); }}>
+              Doctor
+            </button>
+            <button className={role === "chemist" ? "active" : ""} onClick={() => { setRole("chemist"); setFormData({ username: "", uid: "" }); setError(""); }}>
+              Chemist
+            </button>
           </div>
 
-          <div className="input-group">
-            <label>Select Who You Are</label>
-            <div className="dropdown">
-              <button
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="dropdown-btn"
-              >
-                {userType
-                  ? userTypes.find((t) => t.value === userType)?.label
-                  : "Choose your role"}
-                <ChevronDown
-                  className={`dropdown-icon ${dropdownOpen ? "open" : ""}`}
-                />
-              </button>
+          <h2>{role.charAt(0).toUpperCase() + role.slice(1)} Login</h2>
 
-              {dropdownOpen && (
-                <div className="dropdown-menu">
-                  {userTypes.map((type) => {
-                    const Icon = type.icon;
-                    return (
-                      <button
-                        key={type.value}
-                        onClick={() => {
-                          setUserType(type.value);
-                          setDropdownOpen(false);
-                        }}
-                        className="dropdown-item"
-                      >
-                        <Icon className="dropdown-item-icon" />
-                        <span>{type.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+          <form onSubmit={handleLogin}>
+            <div className="input-group">
+              <label>Username</label>
+              <input type="text" name="username" value={formData.username} onChange={handleChange} placeholder="Enter your username" />
             </div>
-          </div>
 
-          <button onClick={handleLogin} className="login-btn">
-            Login
-          </button>
+            {role === "patient" && (
+              <div className="input-group">
+                <label>Patient UID</label>
+                <input type="text" name="uid" value={formData.uid} onChange={handleChange} placeholder="Enter your Patient UID" />
+              </div>
+            )}
 
-          <p className="signup-text">
-            Don't have an account?{" "}
-            <span className="signup-link" onClick={handleSignupClick}>
-              Sign Up
-            </span>
-          </p>
+            {error && <p className="error">{error}</p>}
+            <button type="submit" className="login-btn">Login</button>
+          </form>
         </div>
-
-        {/* --- Role Boxes --- */}
-        <section className="roles-section">
-          <div className="role-card">
-            <User className="role-icon" />
-            <h4>Patient</h4>
-            <p>
-              View prescriptions, share health data, and consult with doctors securely.
-            </p>
-          </div>
-          <div className="role-card">
-            <Stethoscope className="role-icon" />
-            <h4>Doctor</h4>
-            <p>
-              Access patient history, prescribe treatments, and manage consultations efficiently.
-            </p>
-          </div>
-          <div className="role-card">
-            <Pill className="role-icon" />
-            <h4>Chemist</h4>
-            <p>
-              Verify prescriptions and dispense medicines directly from verified records.
-            </p>
-          </div>
-        </section>
       </main>
 
-      {/* --- Footer --- */}
-      <footer className="footer">
-        <p>© 2025 Mediconnect. All rights reserved.</p>
+      {/* Roles Summary */}
+      <section className="roles-strip">
+        <div className="role-card">
+          <h4>Patient</h4>
+          <p>View your prescriptions, tests (with images), and allergy list using your UID.</p>
+        </div>
+        <div className="role-card">
+          <h4>Doctor</h4>
+          <p>Enter a patient UID to view and add prescriptions, tests, and allergies.</p>
+        </div>
+        <div className="role-card">
+          <h4>Chemist</h4>
+          <p>Enter a patient UID to view and verify prescriptions only.</p>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="site-footer">
+        <div className="footer-inner">
+          <div>
+            <h5>Mediconnect</h5>
+            <p>Secure, role-based electronic health records — made simple.</p>
+          </div>
+          <div>
+            <h5>Links</h5>
+            <ul>
+              <li><button className="linklike" onClick={handleAbout}>About</button></li>
+              <li><button className="linklike" onClick={() => navigate("/signup")}>Sign Up</button></li>
+            </ul>
+          </div>
+          <div>
+            <h5>Contact</h5>
+            <p>support@mediconnect.com</p>
+            <p>+91 111-123-4567</p>
+          </div>
+        </div>
+        <div className="footer-bottom">© 2025 Mediconnect. All rights reserved.</div>
       </footer>
     </div>
   );

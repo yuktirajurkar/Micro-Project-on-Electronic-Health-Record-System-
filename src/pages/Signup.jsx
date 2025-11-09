@@ -1,111 +1,131 @@
 import React, { useState } from "react";
-import "./Signup.css";
 import { supabase } from "../supabaseClient";
-import { useNavigate } from "react-router-dom";
+import "./Signup.css";
 
 export default function Signup() {
+  const [role, setRole] = useState("patient"); // default selected tab
   const [formData, setFormData] = useState({
     username: "",
+    full_name: "",
     age: "",
     contact: "",
   });
-  const [loading, setLoading] = useState(false);
-  const [showPopup, setShowPopup] = useState(false);
   const [errors, setErrors] = useState({});
-  const navigate = useNavigate();
+  const [showPopup, setShowPopup] = useState(false);
+  const [generatedUID, setGeneratedUID] = useState("");
 
+  // Input change handler
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-
-    if (errors[name]) {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "",
-      }));
-    }
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
+  // Validation rules
   const validateForm = () => {
     const newErrors = {};
     if (!formData.username.trim()) newErrors.username = "Username is required";
-    if (!formData.age) newErrors.age = "Age is required";
-    if (!formData.contact.trim()) newErrors.contact = "Contact number is required";
-    else if (!/^\d{10}$/.test(formData.contact))
-      newErrors.contact = "Please enter a valid 10-digit number";
+    if (role === "patient") {
+      if (!formData.age || formData.age < 1)
+        newErrors.age = "Please enter a valid age";
+    }
+    if (!/^\d{10}$/.test(formData.contact))
+      newErrors.contact = "Enter a valid 10-digit contact number";
+    if (role !== "patient" && !formData.full_name.trim())
+      newErrors.full_name = "Full name is required";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSignUp = async (e) => {
+  // Handle Signup
+  const handleSignup = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
-    setLoading(true);
     try {
-      // Check if username already exists
-      const { data: existingUser } = await supabase
-        .from("patients")
-        .select("*")
-        .eq("username", formData.username)
-        .single();
+      let tableName = "";
+      let insertData = {};
 
-      if (existingUser) {
-        alert("Username already exists. Try another one.");
-        setLoading(false);
-        return;
-      }
-
-      // Insert new user into Supabase
-      const { error } = await supabase.from("patients").insert([
-        {
+      if (role === "patient") {
+        tableName = "patients";
+        insertData = {
           username: formData.username,
           age: formData.age,
           contact: formData.contact,
-        },
-      ]);
+        };
+      } else if (role === "doctor") {
+        tableName = "doctors";
+        insertData = {
+          username: formData.username,
+          full_name: formData.full_name,
+          contact: formData.contact,
+        };
+      } else if (role === "chemist") {
+        tableName = "chemists";
+        insertData = {
+          username: formData.username,
+          full_name: formData.full_name,
+          contact: formData.contact,
+        };
+      }
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .insert([insertData])
+        .select("*");
 
       if (error) throw error;
 
-      setShowPopup(true);
-      setFormData({ username: "", age: "", contact: "" });
+      if (role === "patient" && data && data.length > 0) {
+        setGeneratedUID(data[0].uid);
+      }
 
-      setTimeout(() => {
-        setShowPopup(false);
-        navigate("/");
-      }, 2500);
+      setShowPopup(true);
+      setFormData({ username: "", full_name: "", age: "", contact: "" });
     } catch (err) {
-      alert("Error signing up: " + err.message);
-    } finally {
-      setLoading(false);
+      alert("Error: " + err.message);
     }
   };
+
+  const closePopup = () => setShowPopup(false);
 
   return (
     <div className="signup-container">
       <header className="signup-header">
         <div className="header-left">
-          {/* <span className="heart">❤️</span> */}
           <h1>Mediconnect</h1>
         </div>
-        <button className="back-btn" onClick={() => navigate("/")}>
+        <button className="back-btn" onClick={() => window.history.back()}>
           Back to Login
         </button>
       </header>
 
       <main className="signup-main">
         <div className="signup-card">
-          <div className="signup-title">
-            <div className="signup-icon">👤</div>
-            <h2>Create Account</h2>
-            <p>Join Mediconnect EHR System</p>
+          <div className="role-tabs">
+            <button
+              className={role === "patient" ? "active" : ""}
+              onClick={() => setRole("patient")}
+            >
+              Patient
+            </button>
+            <button
+              className={role === "doctor" ? "active" : ""}
+              onClick={() => setRole("doctor")}
+            >
+              Doctor
+            </button>
+            <button
+              className={role === "chemist" ? "active" : ""}
+              onClick={() => setRole("chemist")}
+            >
+              Chemist
+            </button>
           </div>
 
-          <form onSubmit={handleSignUp}>
+          <h2>Create {role.charAt(0).toUpperCase() + role.slice(1)} Account</h2>
+          <form onSubmit={handleSignup}>
             <div className="form-group">
               <label>Username</label>
               <input
@@ -113,25 +133,41 @@ export default function Signup() {
                 name="username"
                 value={formData.username}
                 onChange={handleChange}
-                placeholder="Enter your username"
+                placeholder="Enter username"
               />
-              {errors.username && <p className="error-text">{errors.username}</p>}
+              {errors.username && <p className="error">{errors.username}</p>}
             </div>
 
-            <div className="form-group">
-              <label>Age</label>
-              <input
-                type="number"
-                name="age"
-                value={formData.age}
-                onChange={handleChange}
-                placeholder="Enter your age"
-              />
-              {errors.age && <p className="error-text">{errors.age}</p>}
-            </div>
+            {role === "patient" && (
+              <div className="form-group">
+                <label>Age</label>
+                <input
+                  type="number"
+                  name="age"
+                  value={formData.age}
+                  onChange={handleChange}
+                  placeholder="Enter your age"
+                />
+                {errors.age && <p className="error">{errors.age}</p>}
+              </div>
+            )}
+
+            {role !== "patient" && (
+              <div className="form-group">
+                <label>Full Name</label>
+                <input
+                  type="text"
+                  name="full_name"
+                  value={formData.full_name}
+                  onChange={handleChange}
+                  placeholder="Enter your full name"
+                />
+                {errors.full_name && <p className="error">{errors.full_name}</p>}
+              </div>
+            )}
 
             <div className="form-group">
-              <label>Contact Number</label>
+              <label>Contact</label>
               <input
                 type="tel"
                 name="contact"
@@ -139,36 +175,38 @@ export default function Signup() {
                 onChange={handleChange}
                 placeholder="Enter 10-digit contact number"
               />
-              {errors.contact && <p className="error-text">{errors.contact}</p>}
+              {errors.contact && <p className="error">{errors.contact}</p>}
             </div>
 
-            <button type="submit" className="signup-btn" disabled={loading}>
-              {loading ? "Signing Up..." : "Sign Up"}
+            <button type="submit" className="signup-btn">
+              Sign Up
             </button>
           </form>
-
-          <p className="redirect-text">
-            Already have an account?{" "}
-            <span className="login-link" onClick={() => navigate("/")}>
-              Login
-            </span>
-          </p>
         </div>
-
-        {showPopup && (
-          <div className="popup-overlay">
-            <div className="popup">
-              <div className="popup-icon">✅</div>
-              <h3>Registered Successfully!</h3>
-              <p>Welcome to Mediconnect. You can now login.</p>
-            </div>
-          </div>
-        )}
       </main>
 
-      <footer className="signup-footer">
-        <p>© 2025 Mediconnect EHR System. All rights reserved.</p>
-      </footer>
+      {showPopup && (
+        <div className="popup-overlay">
+          <div className="popup">
+            <button className="close-popup" onClick={closePopup}>
+              ✖
+            </button>
+            <div className="popup-icon">✅</div>
+            <h3>Registration Successful!</h3>
+            {role === "patient" ? (
+              <>
+                <p>Your unique Patient ID (UID):</p>
+                <div className="uid-box">{generatedUID}</div>
+              </>
+            ) : (
+              <p>You can now log in with your username.</p>
+            )}
+            <button className="continue-btn" onClick={closePopup}>
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
